@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -55,40 +57,80 @@ if st.button("Generate Audiobook", type="primary"):
                 ("Audio Director", [sys.executable, "audio_director.py"]),
             ]
 
-            failed = False
-            with st.status("Building your audiobook...", expanded=True) as status:
-                for label, command in steps:
-                    status.write(f"Running {label}...")
-                    result = subprocess.run(
-                        command,
-                        cwd=folder,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                        env=env,
-                    )
-                    if result.returncode != 0:
-                        status.update(label=f"{label} failed", state="error")
-                        detail = (result.stderr or result.stdout or "").strip()
-                        st.error(detail or f"{label} exited with code {result.returncode}.")
-                        failed = True
-                        break
-                    status.write(f"{label} finished.")
+            status = st.status("Building your audiobook...", expanded=True)
+            title_slot = st.empty()
+            seen_audio = set()
+            started = time.time()
 
-                if not failed:
-                    status.update(label="Audiobook ready", state="complete")
+            def publish_ready_audio():
+                bible_path = folder / "story_bible.json"
+                chapters_by_number = {}
+                if bible_path.exists() and bible_path.stat().st_mtime >= started - 1:
+                    try:
+                        story = json.loads(bible_path.read_text(encoding="utf-8"))
+                    except json.JSONDecodeError:
+                        story = None
+                    if story:
+                        chapters_by_number = {
+                            chapter["chapter_number"]: chapter["title"]
+                            for chapter in story.get("chapters", [])
+                        }
+                        with title_slot.container():
+                            st.subheader(story["title"])
+                            st.caption(story.get("tone", ""))
+
+                for audio_path in sorted(folder.glob("chapter_*.mp3")):
+                    if audio_path.name in seen_audio:
+                        continue
+                    if audio_path.stat().st_mtime < started - 1 or audio_path.stat().st_size == 0:
+                        continue
+                    seen_audio.add(audio_path.name)
+                    number = audio_path.stem.split("_", 1)[-1]
+                    title = chapters_by_number.get(int(number), "")
+                    label = f"Chapter {number}: {title}" if title else f"Chapter {number}"
+                    st.markdown(f"**{label}**")
+                    st.audio(audio_path.read_bytes(), format="audio/mp3")
+
+            failed = False
+            for label, command in steps:
+                status.write(f"Running {label}...")
+                process = subprocess.Popen(
+                    command,
+                    cwd=folder,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    env=env,
+                )
+                output = []
+
+                def drain_output(stream, sink):
+                    for line in stream:
+                        sink.append(line)
+
+                reader = threading.Thread(
+                    target=drain_output,
+                    args=(process.stdout, output),
+                    daemon=True,
+                )
+                reader.start()
+
+                while process.poll() is None:
+                    publish_ready_audio()
+                    time.sleep(1)
+
+                reader.join(timeout=5)
+                publish_ready_audio()
+
+                if process.returncode != 0:
+                    status.update(label=f"{label} failed", state="error")
+                    detail = "".join(output).strip()
+                    st.error(detail or f"{label} exited with code {process.returncode}.")
+                    failed = True
+                    break
+                status.write(f"{label} finished.")
 
             if not failed:
-                story = json.loads((folder / "story_bible.json").read_text(encoding="utf-8"))
-                st.subheader(story["title"])
-                st.caption(story["tone"])
-
-                for chapter in story["chapters"]:
-                    number = chapter["chapter_number"]
-                    audio_path = folder / f"chapter_{number}.mp3"
-                    st.markdown(f"**Chapter {number}: {chapter['title']}**")
-                    if audio_path.exists():
-                        st.audio(audio_path.read_bytes(), format="audio/mp3")
-                    else:
-                        st.warning(f"Missing {audio_path.name}")
+                status.update(label="Audiobook ready", state="complete")
