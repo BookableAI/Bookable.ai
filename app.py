@@ -22,7 +22,7 @@ prompt = st.text_area(
 
 chapter_count = st.selectbox(
     "Select chapter count",
-    ["3-5", "6-8", "9-12", "13-15"],
+    ["3-5", "6-8", "9-11", "12-15"],
 )
 
 def secret_value(name):

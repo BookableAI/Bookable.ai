@@ -6,10 +6,9 @@ from pathlib import Path
 
 from anthropic import Anthropic
 
-# Same connection setup and model as architect.py
 api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 if not api_key:
-    print("ANTHROPIC_API_KEY is not set. Add it in the app's Streamlit secrets.")
+    print("ANTHROPIC_API_KEY is not set. Add it as an environment variable.")
     raise SystemExit(1)
 
 client = Anthropic(api_key=api_key)

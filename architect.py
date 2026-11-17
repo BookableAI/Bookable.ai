@@ -4,10 +4,9 @@ import instructor
 from anthropic import Anthropic
 from pydantic import BaseModel
 
-# 1. Setup your connection
 api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 if not api_key:
-    print("ANTHROPIC_API_KEY is not set. Add it in the app's Streamlit secrets.")
+    print("ANTHROPIC_API_KEY is not set. Add it as an environment variable.")
     sys.exit(1)
 
 client = instructor.from_anthropic(Anthropic(api_key=api_key))
@@ -45,8 +44,10 @@ story = client.messages.create(
     model="claude-sonnet-4-6",
     max_tokens=8000,
     system=(
-        "You are a master storyteller. Expand the user's premise into a "
-        f"{chapter_length} chapter story bible."
+        "You are a master storyteller. The requested length is "
+        f"{chapter_length} chapters. Choose the single best chapter count "
+        "inside that range for this premise, then expand it into a story bible "
+        "with exactly that many chapters."
     ),
     messages=[
         {"role": "user", "content": user_idea}

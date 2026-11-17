@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -10,7 +11,8 @@ from elevenlabs.core.api_error import ApiError
 # ElevenLabs rejects any single request over 10,000 characters.
 MAX_CHARS = 9500
 
-folder = Path(__file__).parent
+folder = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
+voice_id = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1].strip() else "pNInz6obpgDQGcFmaJgB"
 
 def split_for_speech(text, limit=MAX_CHARS):
     text = text.strip()
@@ -69,7 +71,7 @@ chapters = story_bible["chapters"]
 
 api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
 if not api_key:
-    print("ELEVENLABS_API_KEY is not set. Add it in the app's Streamlit secrets.")
+    print("ELEVENLABS_API_KEY is not set. Add it as an environment variable.")
     raise SystemExit(1)
 
 client = ElevenLabs(api_key=api_key)
@@ -106,7 +108,7 @@ def record_chapter(chapter):
         try:
             audio = client.text_to_speech.convert(
                 text=piece,
-                voice_id="pNInz6obpgDQGcFmaJgB",  # Adam
+                voice_id=voice_id,
                 model_id="eleven_multilingual_v2",
                 output_format="mp3_44100_128",
             )
