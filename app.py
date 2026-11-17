@@ -18,6 +18,11 @@ prompt = st.text_area(
     height=160,
 )
 
+chapter_count = st.selectbox(
+    "Select chapter count",
+    ["3-5", "6-8", "9-12", "13-15"],
+)
+
 if st.button("Generate Audiobook", type="primary"):
     if not prompt.strip():
         st.warning("Enter a story prompt first.")
@@ -26,7 +31,7 @@ if st.button("Generate Audiobook", type="primary"):
         env["PYTHONIOENCODING"] = "utf-8"
 
         steps = [
-            ("Architect", [sys.executable, "architect.py", prompt.strip()]),
+            ("Architect", [sys.executable, "architect.py", prompt.strip(), chapter_count]),
             ("Ghostwriter", [sys.executable, "ghostwriter.py"]),
             ("Audio Director", [sys.executable, "audio_director.py"]),
         ]
