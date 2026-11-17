@@ -1,5 +1,9 @@
 import json
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
 from anthropic import Anthropic
 
 # Same connection setup and model as architect.py
@@ -14,14 +18,26 @@ with open("story_bible.json", "r", encoding="utf-8") as file:
     story_bible = json.load(file)
 
 chapters = story_bible["chapters"]
+print_lock = threading.Lock()
 
-for chapter in chapters:
+def log(message):
+    with print_lock:
+        print(message, flush=True)
+
+def save_text(path, text):
+    """Write to a temporary file, then replace the chapter file in one step."""
+    path = Path(path)
+    temporary = path.with_suffix(path.suffix + ".part")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, path)
+
+def write_chapter(chapter):
     chapter_number = chapter["chapter_number"]
     chapter_title = chapter["title"]
     chapter_summary = chapter["summary"]
-    output_path = f"chapter_{chapter_number}.txt"
+    output_path = Path(f"chapter_{chapter_number}.txt")
 
-    print(f"Writing Chapter {chapter_number}: {chapter_title}... please wait.\n")
+    log(f"Writing Chapter {chapter_number}: {chapter_title}... please wait.\n")
 
     response = client.messages.create(
         model="claude-sonnet-4-6",
@@ -39,11 +55,17 @@ for chapter in chapters:
         ],
     )
 
-    prose = response.content[0].text
+    save_text(output_path, response.content[0].text)
+    log(f"✅ Finished Chapter {chapter_number}. Saved to {output_path}\n")
 
-    with open(output_path, "w", encoding="utf-8") as file:
-        file.write(prose)
-
-    print(f"✅ Finished Chapter {chapter_number}. Saved to {output_path}\n")
+with ThreadPoolExecutor(max_workers=3) as executor:
+    futures = [executor.submit(write_chapter, chapter) for chapter in chapters]
+    try:
+        for future in as_completed(futures):
+            future.result()
+    except Exception:
+        for future in futures:
+            future.cancel()
+        raise
 
 print("✅ Success! All chapters have been written.")

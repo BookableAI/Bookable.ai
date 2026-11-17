@@ -1,8 +1,11 @@
 import json
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from elevenlabs.client import ElevenLabs
+from elevenlabs.core.api_error import ApiError
 
 # ElevenLabs rejects any single request over 10,000 characters.
 MAX_CHARS = 9500
@@ -70,31 +73,63 @@ if not api_key:
     raise SystemExit(1)
 
 client = ElevenLabs(api_key=api_key)
+print_lock = threading.Lock()
 
-for chapter in chapters:
+def log(message):
+    with print_lock:
+        print(message, flush=True)
+
+def save_audio(path, audio_bytes):
+    """Write to a temporary file, then replace the chapter MP3 in one step."""
+    temporary = path.with_suffix(path.suffix + ".part")
+    temporary.write_bytes(audio_bytes)
+    os.replace(temporary, path)
+
+def record_chapter(chapter):
     chapter_number = chapter["chapter_number"]
     chapter_title = chapter["title"]
     text_path = folder / f"chapter_{chapter_number}.txt"
     output_path = folder / f"chapter_{chapter_number}.mp3"
 
-    print(f"Recording Chapter {chapter_number}: {chapter_title}... please wait.\n")
+    log(f"Recording Chapter {chapter_number}: {chapter_title}... please wait.\n")
 
     chapter_text = text_path.read_text(encoding="utf-8")
     pieces = split_for_speech(chapter_text)
-    print(f"Chapter {chapter_number} is {len(chapter_text)} characters, split into {len(pieces)} parts.")
+    log(f"Chapter {chapter_number} is {len(chapter_text)} characters, split into {len(pieces)} parts.")
 
     audio_bytes = bytearray()
     for index, piece in enumerate(pieces, start=1):
-        print(f"Recording part {index} of {len(pieces)} ({len(piece)} characters)...")
-        audio = client.text_to_speech.convert(
-            text=piece,
-            voice_id="pNInz6obpgDQGcFmaJgB",  # Adam
-            model_id="eleven_multilingual_v2",
-            output_format="mp3_44100_128",
+        log(
+            f"Chapter {chapter_number}: recording part {index} of {len(pieces)} "
+            f"({len(piece)} characters)..."
         )
-        audio_bytes.extend(b"".join(audio))
+        try:
+            audio = client.text_to_speech.convert(
+                text=piece,
+                voice_id="pNInz6obpgDQGcFmaJgB",  # Adam
+                model_id="eleven_multilingual_v2",
+                output_format="mp3_44100_128",
+            )
+            audio_bytes.extend(b"".join(audio))
+        except ApiError as error:
+            detail = error.body.get("detail", {}) if isinstance(error.body, dict) else {}
+            message = detail.get("message") if isinstance(detail, dict) else str(error)
+            raise RuntimeError(
+                f"ElevenLabs could not record Chapter {chapter_number}: {message}"
+            ) from error
 
-    output_path.write_bytes(audio_bytes)
-    print(f"✅ Finished Chapter {chapter_number}. Saved audio to {output_path}\n")
+    save_audio(output_path, audio_bytes)
+    log(f"✅ Finished Chapter {chapter_number}. Saved audio to {output_path}\n")
+
+with ThreadPoolExecutor(max_workers=3) as executor:
+    futures = [executor.submit(record_chapter, chapter) for chapter in chapters]
+    try:
+        for future in as_completed(futures):
+            future.result()
+    except Exception as error:
+        for future in futures:
+            future.cancel()
+        print(error)
+        raise SystemExit(1)
 
 print("✅ Success! All chapter audio files have been recorded.")
