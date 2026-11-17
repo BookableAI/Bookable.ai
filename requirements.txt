@@ -1,6 +1,10 @@
 streamlit
+fastapi
+uvicorn
 openai
 anthropic
 instructor
 pydantic
 elevenlabs
+fastapi
+uvicorn
