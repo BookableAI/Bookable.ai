@@ -3,7 +3,12 @@ import os
 from anthropic import Anthropic
 
 # Same connection setup and model as architect.py
-client = Anthropic()
+api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+if not api_key:
+    print("ANTHROPIC_API_KEY is not set. Add it in the app's Streamlit secrets.")
+    raise SystemExit(1)
+
+client = Anthropic(api_key=api_key)
 
 with open("story_bible.json", "r", encoding="utf-8") as file:
     story_bible = json.load(file)

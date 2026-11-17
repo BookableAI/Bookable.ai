@@ -1,10 +1,16 @@
+import os
 import sys
 import instructor
 from anthropic import Anthropic
 from pydantic import BaseModel
 
 # 1. Setup your connection
-client = instructor.from_anthropic(Anthropic())
+api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+if not api_key:
+    print("ANTHROPIC_API_KEY is not set. Add it in the app's Streamlit secrets.")
+    sys.exit(1)
+
+client = instructor.from_anthropic(Anthropic(api_key=api_key))
 
 # 2. Define the exact shape of the data
 class Character(BaseModel):

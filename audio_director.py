@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from elevenlabs.client import ElevenLabs
@@ -11,9 +12,12 @@ with open(folder / "story_bible.json", "r", encoding="utf-8") as file:
 
 chapters = story_bible["chapters"]
 
-import os
-# Find your elevenlabs client setup and change the key to this:
-api_key = os.environ.get("ELEVENLABS_API_KEY")
+api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+if not api_key:
+    print("ELEVENLABS_API_KEY is not set. Add it in the app's Streamlit secrets.")
+    raise SystemExit(1)
+
+client = ElevenLabs(api_key=api_key)
 
 for chapter in chapters:
     chapter_number = chapter["chapter_number"]
